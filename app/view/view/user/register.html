@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {include file="common/header"}
+    <title>注册</title>
+</head>
+<body class="layui-card">
+
+{include file="common/nav"}
+
+<div style="text-align: center">
+    <form action="" class="layui-form layui-card-body">
+        <div class="layui-form-item">
+            <label class="layui-form-label">用户名</label>
+            <div class="layui-input-block">
+                <input type="text" name="username" required  lay-verify="required" placeholder="请输入用户名" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">密码</label>
+            <div class="layui-input-inline">
+                <input type="password" name="password" required lay-verify="required" placeholder="请输入密码" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <label class="layui-form-label">确认密码</label>
+            <div class="layui-input-inline">
+                <input type="password" name="password_confirmation" required lay-verify="required" placeholder="请输入密码" autocomplete="off" class="layui-input">
+            </div>
+        </div>
+        <div class="layui-form-item">
+            <button class="layui-btn" lay-submit lay-filter="commit">注册</button>
+        </div>
+    </form>
+</div>
+<script>
+    layui.use('form', function (){
+        var form = layui.form;
+        form.on('submit(commit)', function(res){
+            $.ajax({
+                type: 'post',
+                contentType: "application/x-www-form-urlencoded",
+                url: '/api/User/register',
+                data: {
+                    username: res.field.username,
+                    password: res.field.password,
+                    password_confirmation: res.field.password_confirmation,
+                },
+                success: function(res){
+                    if(res.status === config('fail')){
+                        layer.msg(res.message);
+                    }else if(res.status === config('success')){
+                        layer.msg("注册成功", function(){
+                            $(window).attr('location', '/api/user/loginPage');
+                        });
+                    }
+                }
+            });
+            return false;
+        })
+    })
+</script>
+</body>
+</html>

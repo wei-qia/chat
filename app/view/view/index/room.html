@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {include file="common/header"}
+    <title>聊天窗口</title>
+</head>
+
+<style>
+    #message{
+        /*scrollbar-width: none; !* firefox *!*/
+        /*-ms-overflow-style: none; !* IE 10+ *!*/
+        overflow: auto;
+        height: 400px;
+    }
+    #message::-webkit-scrollbar {
+        /*display: none; !* Chrome Safari *!*/
+    }
+    .chat-left, .chat-right{
+        max-width: 40%;
+        width: auto;
+        margin: 10px;
+        padding: 10px;
+        border-radius: 5px;
+    }
+    .chat-left{
+        float: left;
+        clear: both;
+    }
+    .chat-right{
+        float: right;
+        clear: both;
+    }
+</style>
+
+<body>
+
+{include file="common/nav"}
+
+<!--聊天窗口-->
+<div class="layui-container">
+    <ul class="layui-nav layui-bg-green">
+        <li class="layui-nav-item">
+            <div id="username">
+
+            </div>
+        </li>
+    </ul>
+    <div style="height: 20px"></div>
+    <div id="message"  class="layui-container">
+
+    </div>
+    <div style="height: 20px"></div>
+    <form class="layui-form">
+        <input type="text" name="content" id="content" required  lay-verify="required" class="layui-input">
+        <button class="layui-btn" lay-submit lay-filter="commit" style="float: right; margin: 20px">发送</button>
+    </form>
+</div>
+
+</body>
+
+<script>
+    let record=[],
+    user = getApiUser();
+    // 加载数据
+    $(function(){
+        $.ajax({
+            type: 'get',
+            url: "/api/index/room/{$id}",
+            success: function(res, status, request){
+                checkJWT(request, res)
+                if(res.status === config('fail')){
+                    layer.msg(res.message);
+                }else if(res.status === config('success')){
+                    $('#username').append(
+                        "<p>"+ res.data.user.username +"</p>"
+                    );
+                    record = res.data.record;
+                    showMessageDemo('index');
+
+                }
+            }
+        });
+    })
+
+    //  websocket
+    let wsServer = 'ws://chat.test:9502?type=chat_uid_' + "{$id}" + '&token=' + getApiToken() ,
+        websocket = null;
+        lock = false;
+    $(function(){
+        link();
+    })
+    function link(){
+        websocket = new WebSocket(wsServer);
+
+        websocket.onopen = function (evt) {
+
+        };
+
+        websocket.onclose = function (evt) {
+            websocket.close();
+            relink();
+        };
+
+        websocket.onmessage = function (evt) {
+            switchOperation(JSON.parse(evt.data).data);
+        };
+
+        websocket.onerror = function (evt, e) {
+            console.log('错误: ' + evt.data);
+        };
+    }
+
+    function relink(){
+        if(lock){
+            return false;
+        }
+        lock = true
+        setTimeout(function(){
+            link();
+            lock = false;
+        })
+
+    }
+
+    // 根据返回信息进行相应的操作
+    function switchOperation(data){
+        switch (data.type) {
+            case 'chat':
+                updateChat(data);
+        }
+    }
+
+    function updateChat(data){
+        record.push({
+            'user_id': data.form,
+            'friend_id': user.id,
+            'message': data.message,
+        })
+        showMessageDemo();
+    }
+
+    // 发送信息
+    layui.use('form', function (){
+
+
+        var form = layui.form;
+        form.on('submit(commit)', function(res){
+            let data = {
+                'friend_id': "{$id}",
+                'type': 'chat',
+                'username': getApiUser().username,
+                'message': res.field.content
+            };
+            let jsonData = JSON.stringify(data);
+            websocket.send(jsonData);
+
+            record.push({
+                'user_id': user.id,
+                'friend_id': "{$id}",
+                'message': res.field.content,
+            })
+            showMessageDemo();
+
+            $('#content').val('');
+            return false;
+        })
+    })
+
+    // 渲染信息模板
+    function showMessageDemo(type = 'add'){
+        layui.use('laytpl', function() {
+            let laytpl = layui.laytpl,
+                getTpl = messageDemo.innerHTML,
+                view = document.getElementById('message');
+            laytpl(getTpl).render(record, function (html) {
+                view.innerHTML = html;
+                // 刚进入直接跳转到最底部
+                if(type === 'index'){
+                    $("#message").scrollTop($('#message')[0].scrollHeight);
+                }
+            });
+        })
+    }
+</script>
+
+<!--消息模板-->
+<script id="messageDemo" type="text/html">
+    {{#  layui.each(d, function(index, item){ }}
+        {{# if(item.user_id == user.id){ }}
+            <div class="layui-bg-green chat-right">
+                {{ item.message }}
+            </div>
+        {{# }else if(item.friend_id == user.id){ }}
+            <div class="layui-bg-gray chat-left">
+                {{ item.message }}
+            </div>
+        {{# } }}
+    {{#  }); }}
+</script>
+
+
+</html>

@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {include file="common/header"}
+    <title>首页</title>
+</head>
+<body>
+
+{include file="common/nav"}
+
+<!--添加好友-->
+<div class="layui-container">
+    <ul class="layui-nav layui-bg-green">
+        <li class="layui-nav-item">
+            <a >添加好友</a>
+        </li>
+    </ul>
+    <div style="height: 20px"></div>
+    <form class="layui-form">
+        <div class="layui-input-inline">
+            <input type="text" name="username" required  lay-verify="required" placeholder="请输入用户名" class="layui-input" >
+        </div>
+            <button class="layui-btn" lay-submit lay-filter="add">添加</button>
+    </form>
+</div>
+
+<div style="height: 50px"></div>
+<!--好友列表-->
+<div id="friend-list" class="layui-container">
+
+</div>
+
+<div style="height: 50px"></div>
+<!--好友申请-->
+<div id="add-friend-list" class="layui-container">
+
+</div>
+</body>
+
+<script>
+    // 添加朋友信息
+    let friend = { //数据
+        "list":[]
+    }
+    let addfriend = { //数据
+        "list":[]
+    }
+    // 加载数据
+    $(function(){
+        getData();
+    })
+
+    // 更新页面数据
+    function getData(){
+        $.ajax({
+            type: 'get',
+            url: '/api/Index/index',
+            success: function(res, status, request){
+                checkJWT(request, res)
+                if(res.status === config('fail')){
+                    layer.msg(res.message);
+                }else if(res.status === config('success')){
+                    friend.list = res.data.friend;
+                    showFriendDemo();
+                    showAddFriendDemo();
+                }
+            }
+        });
+    }
+
+    // 添加好友提交
+    layui.use('form', function (){
+        var form = layui.form;
+        form.on('submit(add)', function(res){
+            $.ajax({
+                type: 'post',
+                contentType: "application/x-www-form-urlencoded",
+                url: '/api/User/addFriend',
+                data: {
+                    username: res.field.username,
+                },
+                success: function(res, status, request){
+                    checkJWT(request, res);
+                    if(res.status === config('fail')){
+                        layer.msg(res.message);
+                    }else if(res.status === config('success')){
+                        layer.msg("添加成功，请等待对方确认");
+                    }
+                }
+            });
+            return false;
+        })
+    })
+
+    // websocket
+    let wsServer = 'ws://chat.test:9502?type=index&token=' + getApiToken() ,
+        websocket = null;
+    lock = false;
+    $(function(){
+        link();
+    })
+    function link(){
+        websocket = new WebSocket(wsServer);
+
+        websocket.onopen = function (evt) {
+
+        };
+
+        websocket.onclose = function (evt) {
+            websocket.close();
+            relink();
+        };
+
+        websocket.onmessage = function (evt) {
+            switchOperation(JSON.parse(evt.data).data);
+        };
+
+        websocket.onerror = function (evt, e) {
+            console.log('错误: ' + JSON.parse(evt.data).message);
+        };
+    }
+
+    function relink(){
+        if(lock){
+            return false;
+        }
+        lock = true
+        setTimeout(function(){
+            link();
+            lock = false;
+        })
+    }
+
+    // 根据返回信息进行相应的操作
+    function switchOperation(data){
+        switch (data.type) {
+            case 'addFriend':
+                addFriendItem(data);
+                break;
+            case 'handleFriend':
+                updateFriendItem(data);
+                break;
+            case 'chat':
+                updateFriendChat(data);
+        }
+    }
+
+    // 插入添加好友申请
+    function addFriendItem(data){
+        if(data.message === ''){
+            data.message = '该好友没有留言';
+        }
+        addfriend.list.push({
+            'username': data.username,
+            'id': data.form,
+            'message': data.message
+        });
+        showAddFriendDemo();
+    }
+    // 对方同意好友申请 更新好友列表
+    function updateFriendItem(data){
+        layer.msg(data.username + " 已同意您的好友申请");
+        getData();
+    }
+
+    // 好友发送信息通知
+    function updateFriendChat(data){
+        friend.list.forEach(function(val, index){
+            if(val.friend_id === data.form){
+                friend.list[index].count = data.count;
+                friend.list[index].message = data.message;
+            }
+        })
+        showFriendDemo();
+    }
+
+    // 处理好友请求
+    function handleFriend(friend_index, friend_id, username){
+        layer.confirm('是否同意 '+ username +' 的好友申请？', function(index){
+            // 同意申请
+            handleFriendAjax(friend_index, friend_id, 1);
+
+            layer.close(index);
+        }, function(index){
+            // 拒绝申请
+            handleFriendAjax(friend_index, friend_id, 0);
+
+            layer.close(index);
+        });
+    }
+
+    function handleFriendAjax(friend_index, friend_id, handle_status){
+        $.ajax({
+            type: 'post',
+            contentType: "application/x-www-form-urlencoded",
+            url: '/api/User/handleFriend',
+            data: {
+                friend_id: friend_id,
+                handle_status: handle_status,
+            },
+            success: function(res, status, request){
+                checkJWT(request, res);
+                if(res.status === config('fail')){
+                    layer.msg(res.message);
+                }else if(res.status === config('success')){
+                    layer.msg("操作成功");
+                    // 移除该申请
+                    addfriend.list.splice(friend_index,1);
+                    // 更新首页数据
+                    getData();
+                }
+            }
+        });
+    }
+
+    // 渲染好友模板
+    function showFriendDemo(){
+        layui.use('laytpl', function() {
+            let laytpl = layui.laytpl,
+                getTpl = friendDemo.innerHTML,
+                view = document.getElementById('friend-list');
+            laytpl(getTpl).render(friend, function (html) {
+                view.innerHTML = html;
+            });
+        })
+    }
+
+    // 渲染添加好友模板
+    function showAddFriendDemo(){
+        layui.use(['laytpl','form'], function() {
+            let laytpl = layui.laytpl,
+                getTpl2 = addFriendDemo.innerHTML,
+                view2 = document.getElementById('add-friend-list');
+            laytpl(getTpl2).render(addfriend, function (html) {
+                view2.innerHTML = html;
+            });
+        })
+    }
+
+</script>
+<!--朋友列表模板-->
+<script id="friendDemo" type="text/html">
+    <ul class="layui-nav layui-bg-green">
+        <li class="layui-nav-item">
+            <a >我的好友<span class="layui-badge">{{ d.list.length }}</span></a>
+        </li>
+    </ul>
+    <div style="height: 20px"></div>
+        <div class="layui-row layui-col-space15">
+
+        {{#  layui.each(d.list, function(index, item){ }}
+            <div class="layui-col-md3">
+                <a href="/view/index/room/{{item.friend_id}}">
+                    <div class="layui-panel">
+                        <div style="padding: 30px;">
+                            {{ item.username }}
+                            {{# if(item.count) { }}
+                            <span class="layui-badge-rim">{{ item.count }}</span>
+                            {{# } }}
+                        </div>
+                    </div>
+                </a>
+            </div>
+        {{#  }); }}
+        {{#  if(d.list.length === 0){ }}
+        <div class="layui-col-md3">
+            <div class="layui-panel">
+                <div style="padding: 30px;">
+                    无好友
+                </div>
+            </div>
+        </div>
+        {{#  } }}
+        </div>
+    </ul>
+</script>
+<!--申请朋友列表模板-->
+<script id="addFriendDemo" type="text/html">
+    <ul class="layui-nav layui-bg-green">
+        <li class="layui-nav-item">
+            <a >申请列表<span class="layui-badge">{{ d.list.length }}</span></a>
+        </li>
+    </ul>
+    <div style="height: 20px"></div>
+    <div class="layui-row layui-col-space15">
+
+        {{#  layui.each(d.list, function(index, item){ }}
+        <div class="layui-col-md3">
+            <a onclick='handleFriend("{{index}}", "{{item.id}}", "{{item.username}}")'>
+            <div class="layui-panel">
+                <div class="layui-card">
+                    <div class="layui-card-header">来自{{ item.username }}的好友申请</div>
+                    <div class="layui-card-body">
+                        {{ item.message }}
+                    </div>
+                </div>
+            </div>
+            </a>
+        </div>
+        {{#  }); }}
+        {{#  if(d.list.length === 0){ }}
+        <div class="layui-col-md3">
+            <div class="layui-panel">
+                <div style="padding: 30px;">
+                    无申请
+                </div>
+            </div>
+        </div>
+        {{#  } }}
+    </div>
+    </ul>
+</script>
+</html>

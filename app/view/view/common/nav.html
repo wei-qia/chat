@@ -1,0 +1,22 @@
+<ul class="layui-nav" lay-filter="">
+  <li class="layui-nav-item"><a href="/view/index/index">聊天室</a></li>
+  <li class="layui-nav-item" style="float: right;" id="logout"></li>
+  <li class="layui-nav-item" style="float: right;" id="welcome"></li>
+</ul>
+
+<div style="height: 50px"></div>
+<script>
+  $(function(){
+    let user = getApiUser();
+    if(user){
+      $('#welcome').append(
+              "<span>欢迎你： "+ user.username +"  </span>"
+      );
+      $('#logout').append(
+              "<a onclick='logout()'>注销</a>"
+      )
+    }
+
+  })
+
+</script>
